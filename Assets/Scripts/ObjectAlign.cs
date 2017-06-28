@@ -3,10 +3,12 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.VR.WSA.Input;
 
+
 public class ObjectAlign : MonoBehaviour
 {
 
     private bool anchored = false;
+    private float distFwd = 0.4f; // 0.4 meters
 
     // Use this for initialization
     void Start()
@@ -38,7 +40,7 @@ public class ObjectAlign : MonoBehaviour
             transform.position -= (Camera.main.transform.TransformPoint( Vector3.right * 0.002f ) - Camera.main.transform.position);
         }
 
-        transform.position = Camera.main.transform.position + Camera.main.transform.forward * 0.6f;
+        transform.position = Camera.main.transform.position + Camera.main.transform.forward * distFwd;
         if (!anchored)
         {
             transform.rotation = Quaternion.AngleAxis( Camera.main.transform.rotation.eulerAngles.y, Vector3.up );
