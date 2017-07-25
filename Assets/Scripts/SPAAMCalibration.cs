@@ -26,12 +26,12 @@ public class SPAAMCalibration : MonoBehaviour
     private int numData = 12;
     private float[,] AlignmentPoints;
     private float[,] CalibrationPoints =
-        { { 0, 0, 0 },
+        { { 0, 0.5f, 0 },
           { 0, 0, 0.5f },
           { 0, 0, 0.2f },
           { 0.6f, 0, 0.1f },
           { -0.5f, 0, 0.5f },
-          { -0.3f, 0, 0.5f },
+          { -0.3f, 0.2f, 0.5f },
           { -0.8f, 0, 0.5f },
           { -0.1f, 0, 0.5f },
           { -0.3f, 0, -0.5f },
@@ -56,7 +56,7 @@ public class SPAAMCalibration : MonoBehaviour
         textStatus.text = "Step " + (currStep + 1);
 
         // Testing space
-        GetCalibration( CalibrationPoints, CalibrationPoints );
+        // GetCalibration( CalibrationPoints, CalibrationPoints );
     }
 
     // Update is called once per frame
@@ -138,20 +138,22 @@ public class SPAAMCalibration : MonoBehaviour
         Matrix A = Matrix.Build.Dense( 12 * 3, 15, 0 ); // Initialized a matrix of 36x15 of zeros
         for (int p = 0; p < 12; p++)
         {
-            Vector currRow1 = Vector.Build.Dense( new double[] { -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, 0, 0, 0, 0, 0, 0, 0, 0, pi[p, 0] * qi[p, 0], pi[p, 0] * qi[p, 1], pi[p, 0] * qi[p, 2] } );
-            Vector currRow2 = Vector.Build.Dense( new double[] { 0, 0, 0, 0, -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, 0, 0, 0, 0, pi[p, 1] * qi[p, 0], pi[p, 1] * qi[p, 1], pi[p, 1] * qi[p, 2] } );
-            Vector currRow3 = Vector.Build.Dense( new double[] { 0, 0, 0, 0, 0, 0, 0, 0, -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, pi[p, 2] * qi[p, 0], pi[p, 2] * qi[p, 1], pi[p, 2] * qi[p, 2] } );
+            Vector currRow1 = Vector.Build.DenseOfArray( new double[] { -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, 0, 0, 0, 0, 0, 0, 0, 0, pi[p, 0] * qi[p, 0], pi[p, 0] * qi[p, 1], pi[p, 0] * qi[p, 2] } );
+            Vector currRow2 = Vector.Build.DenseOfArray( new double[] { 0, 0, 0, 0, -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, 0, 0, 0, 0, pi[p, 1] * qi[p, 0], pi[p, 1] * qi[p, 1], pi[p, 1] * qi[p, 2] } );
+            Vector currRow3 = Vector.Build.DenseOfArray( new double[] { 0, 0, 0, 0, 0, 0, 0, 0, -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, pi[p, 2] * qi[p, 0], pi[p, 2] * qi[p, 1], pi[p, 2] * qi[p, 2] } );
             A.SetRow( 3 * p, currRow1 );
             A.SetRow( 3 * p + 1, currRow2 );
             A.SetRow( 3 * p + 2, currRow3 );
         }
 
-        Debug.Log( A.ToString() );
+        var svd = A.Svd(true);
 
-        var svd = A.Svd();
+        //Debug.Log( svd.VT );
+
+        //var diff = A - svd.U * svd.W * svd.VT;
 
         Debug.Log( "SVD" );
-        Debug.Log( (svd.VT).Column(14) );
+        Debug.Log( svd.VT );
 
         return new Matrix4x4();
     }
