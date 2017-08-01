@@ -16,9 +16,10 @@ public class SPAAMCalibration : MonoBehaviour
     // *** User Interface *** //
     public Text textStatus;
 
-    public GameObject CalibrationObject;   // This is the virtual object that will be moved around
-    public GameObject AlignmentObject;     // This object will be the one attached to the alignment object
-    public GameObject AlignmentObjectHMD;  // This object will be the one attached to the HoloLens
+    //public GameObject HoloLensMarker;      // This is the virtual object that will be moved around
+    public GameObject NeedleMarker;                // This marker will be the one attached to the needle
+    public GameObject HoloLensMarker;              // This marker will be the one attached to the HoloLens
+    private Transform CalibrationObjectTransform;  // This is the object that will move around w/r to the HoloLens for calibration
 
     private bool initialAlignment = false;
 
@@ -40,18 +41,17 @@ public class SPAAMCalibration : MonoBehaviour
           { -0.05f, 0, 0.5f }
         };
     private int currStep = 0;
-    private Transform CalibrationObjectTransform;
-    private Transform AlignmentObjectTransform;
-    private Transform AlignmentObjectHMDTransform;
+    //private Transform CalibrationObjectTransform;
+    //private Transform AlignmentObjectTransform;
+    //private Transform HoloLensMarkerTransform;
 
     // Use this for initialization
     void Start()
     {
-        AlignmentPoints = new float[numData, 7];                     // Initialize 2D array of numData and 7 which is 3 for position and 4 for orientation
-        AlignmentObjectTransform = AlignmentObject.transform;
-        AlignmentObjectHMDTransform = AlignmentObjectHMD.transform;
+        CalibrationObjectTransform = HoloLensMarker.transform.GetChild( 0 ); // obtain the transform of the container for the calibration object
 
-        CalibrationObjectTransform = CalibrationObject.transform;    // Use to set the pre-defined calibration positions
+        AlignmentPoints = new float[numData, 7];                     // Initialize 2D array of numData and 7 which is 3 for position and 4 for orientation
+
         CalibrationObjectTransform.position = new Vector3(CalibrationPoints[0,0], CalibrationPoints[0, 1], CalibrationPoints[0, 2] );  // Set the first position
         textStatus.text = "Step " + (currStep + 1);
 
@@ -68,8 +68,8 @@ public class SPAAMCalibration : MonoBehaviour
             {
                 initialAlignment = true;
             }
-            Vector3 relativePos = AlignmentObjectTransform.position - AlignmentObjectHMDTransform.position;
-            Quaternion relativeRot = Quaternion.Inverse( AlignmentObjectHMDTransform.rotation ) * AlignmentObjectTransform.rotation; // rotation from HMD to object
+            Vector3 relativePos = NeedleMarker.transform.position - HoloLensMarker.transform.position;
+            Quaternion relativeRot = Quaternion.Inverse( HoloLensMarker.transform.rotation ) * NeedleMarker.transform.rotation; // rotation from HMD to object
 
             AlignmentPoints[currStep, 0] = relativePos.x;
             AlignmentPoints[currStep, 1] = relativePos.y;
@@ -82,6 +82,8 @@ public class SPAAMCalibration : MonoBehaviour
             if (currStep == numData - 1)
             {
                 textStatus.text = "Done.";
+                Matrix4x4 T_H = GetCalibration( CalibrationPoints, AlignmentPoints );
+                Debug.Log( T_H );
             }
             else
             {
@@ -120,7 +122,8 @@ public class SPAAMCalibration : MonoBehaviour
 
     /// <summary>
     /// Get Calibration calculates the projection matrix from points in displayed to points in measured. The problem is defined
-    /// as qi = T*pi. If we rework the matrix we can get A*t = 0. The reworked matrix is of the following form:
+    /// as qi = T*pi. Where pi are defined points and qi are measured. If we rework the matrix we can get A*t = 0. The reworked 
+    /// matrix is of the following form:
     /// A = [-q1 -q2 -q3 -1   0   0   0  0   0   0   0  0 p1q1 p1q2 p1q3;
     ///        0   0   0  0 -q1 -q2 -q3 -1   0   0   0  0 p2q1 p2q2 p2q3;
     ///        0   0   0  0   0   0   0  0 -q1 -q2 -q3 -1 p3q1 p3q2 p3q3;
@@ -148,14 +151,31 @@ public class SPAAMCalibration : MonoBehaviour
 
         var svd = A.Svd(true);
 
-        //Debug.Log( svd.VT );
+        //Debug.Log( svd.VT ); 
 
         //var diff = A - svd.U * svd.W * svd.VT;
 
         Debug.Log( "SVD" );
-        Debug.Log( svd.VT );
+        Vector coeffResults = svd.VT.Column( svd.VT.ColumnCount - 1 );
+        Debug.Log( "Vector of size " + coeffResults.Count );
+        Matrix4x4 Tresult = new Matrix4x4();
+        Tresult.m00 = (float) coeffResults[0];
+        Tresult.m01 = (float)coeffResults[1];
+        Tresult.m02 = (float)coeffResults[2];
+        Tresult.m03 = (float)coeffResults[3];
+        Tresult.m10 = (float)coeffResults[4];
+        Tresult.m11 = (float)coeffResults[5];
+        Tresult.m12 = (float)coeffResults[6];
+        Tresult.m13 = (float)coeffResults[7];
+        Tresult.m20 = (float)coeffResults[8];
+        Tresult.m21 = (float)coeffResults[9];
+        Tresult.m22 = (float)coeffResults[10];
+        Tresult.m23 = (float)coeffResults[11];
+        Tresult.m30 = (float)coeffResults[12];
+        Tresult.m31 = (float)coeffResults[13];
+        Tresult.m32 = (float)coeffResults[14];
+        Tresult.m33 = 1.0f;
 
-        return new Matrix4x4();
+        return Tresult;
     }
-
 }
