@@ -52,7 +52,7 @@ public class SPAAMCalibration : MonoBehaviour
         AlignmentObjectHMDTransform = AlignmentObjectHMD.transform;
 
         CalibrationObjectTransform = CalibrationObject.transform;    // Use to set the pre-defined calibration positions
-        CalibrationObjectTransform.position = new Vector3(CalibrationPoints[0,0], CalibrationPoints[0, 1], CalibrationPoints[0, 2] );  // Set the first position
+        CalibrationObjectTransform.position = Camera.main.transform.position + new Vector3( CalibrationPoints[0,0], CalibrationPoints[0, 1], CalibrationPoints[0, 2] );  // Set the first position
         textStatus.text = "Step " + (currStep + 1);
 
         // Testing space
@@ -86,7 +86,7 @@ public class SPAAMCalibration : MonoBehaviour
             else
             {
                 currStep++;
-                CalibrationObjectTransform.position = new Vector3( CalibrationPoints[currStep, 0], CalibrationPoints[currStep, 1], CalibrationPoints[currStep, 2] );  // Set next position
+                CalibrationObjectTransform.position = Camera.main.transform.position + new Vector3( CalibrationPoints[currStep, 0], CalibrationPoints[currStep, 1], CalibrationPoints[currStep, 2] );  // Set next position
                 textStatus.text = "Step " + (currStep + 1);
             }
         }
