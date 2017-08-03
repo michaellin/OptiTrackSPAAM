@@ -54,7 +54,10 @@ public class SPAAMCalibration : MonoBehaviour
 
         AlignmentPoints = new double[numData, 7];                     // Initialize 2D array of numData and 7 which is 3 for position and 4 for orientation
 
-        CalibrationObjectTransform.position = new Vector3((float)CalibrationPoints[0,0], (float)CalibrationPoints[0, 1], (float)CalibrationPoints[0, 2] );  // Set the first position
+
+        CalibrationObjectTransform = NeedleMarker.transform;    // Use to set the pre-defined calibration positions
+        CalibrationObjectTransform.position = Camera.main.transform.position + new Vector3( (float)CalibrationPoints[0,0], (float)CalibrationPoints[0, 1], (float)CalibrationPoints[0, 2] );  // Set the first position
+
         textStatus.text = "Step " + (currStep + 1);
 
         // Testing space
@@ -91,7 +94,7 @@ public class SPAAMCalibration : MonoBehaviour
             else
             {
                 currStep++;
-                CalibrationObjectTransform.position = new Vector3( (float)CalibrationPoints[currStep, 0], (float)CalibrationPoints[currStep, 1], (float)CalibrationPoints[currStep, 2] );  // Set next position
+                CalibrationObjectTransform.position = Camera.main.transform.position + new Vector3( (float)CalibrationPoints[currStep, 0], (float)CalibrationPoints[currStep, 1], (float)CalibrationPoints[currStep, 2] );  // Set next position
                 textStatus.text = "Step " + (currStep + 1);
             }
         }
