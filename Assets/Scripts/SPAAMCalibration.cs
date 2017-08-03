@@ -1,11 +1,13 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.VR.WSA.Input;
 using UnityEngine.UI;
 
-using Matrix = MathNet.Numerics.LinearAlgebra.Matrix<double>;
-using Vector = MathNet.Numerics.LinearAlgebra.Vector<double>;
+//using Matrix = MathNet.Numerics.LinearAlgebra.Matrix<double>;
+//using Vector = MathNet.Numerics.LinearAlgebra.Vector<double>;
+
 
 
 public class SPAAMCalibration : MonoBehaviour
@@ -25,20 +27,20 @@ public class SPAAMCalibration : MonoBehaviour
 
     // *** Calibration Parameters *** //
     private int numData = 12;
-    private float[,] AlignmentPoints;
-    private float[,] CalibrationPoints =
-        { { 0, 0.5f, 0 },
-          { 0, 0, 0.5f },
-          { 0, 0, 0.2f },
-          { 0.6f, 0, 0.1f },
-          { -0.5f, 0, 0.5f },
-          { -0.3f, 0.2f, 0.5f },
-          { -0.8f, 0, 0.5f },
-          { -0.1f, 0, 0.5f },
-          { -0.3f, 0, -0.5f },
-          { -0.8f, 0, -0.5f },
-          { 0.7f, 0, 0.5f },
-          { -0.05f, 0, 0.5f }
+    private double[,] AlignmentPoints;
+    private double[,] CalibrationPoints =
+        { { 0, 0.5, 0 },
+          { 0, 0, 0.5 },
+          { 0, 0, 0.2 },
+          { 0.6, 0, 0.1 },
+          { -0.5, 0, 0.5 },
+          { -0.3, 0.2, 0.5 },
+          { -0.8, 0, 0.5 },
+          { -0.1, 0, 0.5 },
+          { -0.3, 0, -0.5 },
+          { -0.8, 0, -0.5 },
+          { 0.7, 0, 0.5 },
+          { -0.05, 0, 0.5 }
         };
     private int currStep = 0;
     //private Transform CalibrationObjectTransform;
@@ -50,13 +52,13 @@ public class SPAAMCalibration : MonoBehaviour
     {
         CalibrationObjectTransform = HoloLensMarker.transform.GetChild( 0 ); // obtain the transform of the container for the calibration object
 
-        AlignmentPoints = new float[numData, 7];                     // Initialize 2D array of numData and 7 which is 3 for position and 4 for orientation
+        AlignmentPoints = new double[numData, 7];                     // Initialize 2D array of numData and 7 which is 3 for position and 4 for orientation
 
-        CalibrationObjectTransform.position = new Vector3(CalibrationPoints[0,0], CalibrationPoints[0, 1], CalibrationPoints[0, 2] );  // Set the first position
+        CalibrationObjectTransform.position = new Vector3((float)CalibrationPoints[0,0], (float)CalibrationPoints[0, 1], (float)CalibrationPoints[0, 2] );  // Set the first position
         textStatus.text = "Step " + (currStep + 1);
 
         // Testing space
-        // GetCalibration( CalibrationPoints, CalibrationPoints );
+        GetCalibration( CalibrationPoints, CalibrationPoints );
     }
 
     // Update is called once per frame
@@ -82,13 +84,14 @@ public class SPAAMCalibration : MonoBehaviour
             if (currStep == numData - 1)
             {
                 textStatus.text = "Done.";
-                Matrix4x4 T_H = GetCalibration( CalibrationPoints, AlignmentPoints );
-                Debug.Log( T_H );
+                GetCalibration( CalibrationPoints, AlignmentPoints );
+                //Matrix4x4 T_H = GetCalibration( CalibrationPoints, AlignmentPoints );
+                //Debug.Log( T_H );
             }
             else
             {
                 currStep++;
-                CalibrationObjectTransform.position = new Vector3( CalibrationPoints[currStep, 0], CalibrationPoints[currStep, 1], CalibrationPoints[currStep, 2] );  // Set next position
+                CalibrationObjectTransform.position = new Vector3( (float)CalibrationPoints[currStep, 0], (float)CalibrationPoints[currStep, 1], (float)CalibrationPoints[currStep, 2] );  // Set next position
                 textStatus.text = "Step " + (currStep + 1);
             }
         }
@@ -120,6 +123,7 @@ public class SPAAMCalibration : MonoBehaviour
         }
     }
 
+
     /// <summary>
     /// Get Calibration calculates the projection matrix from points in displayed to points in measured. The problem is defined
     /// as qi = T*pi. Where pi are defined points and qi are measured. If we rework the matrix we can get A*t = 0. The reworked 
@@ -136,46 +140,88 @@ public class SPAAMCalibration : MonoBehaviour
     /// <param name="pi"></param>
     /// <param name="qi"></param>
     /// <returns></returns>
-    private Matrix4x4 GetCalibration( float[,] pi, float[,] qi )
+    private void GetCalibration( double[,] pi, double[,] qi )
     {
-        Matrix A = Matrix.Build.Dense( 12 * 3, 15, 0 ); // Initialized a matrix of 36x15 of zeros
+        const int doubleSize = 8;
+        const int matrixWidth = 15;
+        const int matrixHeight = 36;
+
+        var A = new double[matrixHeight, matrixWidth];
         for (int p = 0; p < 12; p++)
         {
-            Vector currRow1 = Vector.Build.DenseOfArray( new double[] { -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, 0, 0, 0, 0, 0, 0, 0, 0, pi[p, 0] * qi[p, 0], pi[p, 0] * qi[p, 1], pi[p, 0] * qi[p, 2] } );
-            Vector currRow2 = Vector.Build.DenseOfArray( new double[] { 0, 0, 0, 0, -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, 0, 0, 0, 0, pi[p, 1] * qi[p, 0], pi[p, 1] * qi[p, 1], pi[p, 1] * qi[p, 2] } );
-            Vector currRow3 = Vector.Build.DenseOfArray( new double[] { 0, 0, 0, 0, 0, 0, 0, 0, -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, pi[p, 2] * qi[p, 0], pi[p, 2] * qi[p, 1], pi[p, 2] * qi[p, 2] } );
-            A.SetRow( 3 * p, currRow1 );
-            A.SetRow( 3 * p + 1, currRow2 );
-            A.SetRow( 3 * p + 2, currRow3 );
+            double[] row1 = { -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, 0, 0, 0, 0, 0, 0, 0, 0, pi[p, 0] * qi[p, 0], pi[p, 0] * qi[p, 1], pi[p, 0] * qi[p, 2] };
+            Buffer.BlockCopy( row1, 0, A, doubleSize * matrixWidth * ( 3 * p), doubleSize * matrixWidth );
+            double[] row2 = { 0, 0, 0, 0, -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, 0, 0, 0, 0, pi[p, 1] * qi[p, 0], pi[p, 1] * qi[p, 1], pi[p, 1] * qi[p, 2] };
+            Buffer.BlockCopy( row2, 0, A, doubleSize * matrixWidth * (3 * p + 1), doubleSize * matrixWidth );
+            double[] row3 = { 0, 0, 0, 0, 0, 0, 0, 0, -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, pi[p, 2] * qi[p, 0], pi[p, 2] * qi[p, 1], pi[p, 2] * qi[p, 2] };
+            Buffer.BlockCopy( row3, 0, A, doubleSize * matrixWidth * (3 * p + 2), doubleSize * matrixWidth );
         }
+        //printMatrix( A );
+        double[] W = new double[matrixWidth];
+        double[,] U = new double[matrixHeight, matrixWidth];
+        double[,] VT = new double[matrixWidth, matrixWidth];
+        alglib.svd.rmatrixsvd( A, matrixHeight, matrixWidth, 0, 1, 2, ref W, ref U, ref VT );
 
-        var svd = A.Svd(true);
+        printMatrix( VT );
+        //Debug.Log( U.ToString() );
+        //Debug.Log( VT.ToString() );
+        //Matrix A = Matrix.Build.Dense( 12 * 3, 15, 0 ); // Initialized a matrix of 36x15 of zeros
+        //for (int p = 0; p < 12; p++)
+        //{
+        //    Vector currRow1 = Vector.Build.DenseOfArray( new double[] { -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, 0, 0, 0, 0, 0, 0, 0, 0, pi[p, 0] * qi[p, 0], pi[p, 0] * qi[p, 1], pi[p, 0] * qi[p, 2] } );
+        //    Vector currRow2 = Vector.Build.DenseOfArray( new double[] { 0, 0, 0, 0, -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, 0, 0, 0, 0, pi[p, 1] * qi[p, 0], pi[p, 1] * qi[p, 1], pi[p, 1] * qi[p, 2] } );
+        //    Vector currRow3 = Vector.Build.DenseOfArray( new double[] { 0, 0, 0, 0, 0, 0, 0, 0, -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, pi[p, 2] * qi[p, 0], pi[p, 2] * qi[p, 1], pi[p, 2] * qi[p, 2] } );
+        //    A.SetRow( 3 * p, currRow1 );
+        //    A.SetRow( 3 * p + 1, currRow2 );
+        //    A.SetRow( 3 * p + 2, currRow3 );
+        //}
 
-        //Debug.Log( svd.VT ); 
+        //var svd = A.Svd(true);
 
-        //var diff = A - svd.U * svd.W * svd.VT;
+        ////Debug.Log( svd.VT ); 
 
-        Debug.Log( "SVD" );
-        Vector coeffResults = svd.VT.Column( svd.VT.ColumnCount - 1 );
-        Debug.Log( "Vector of size " + coeffResults.Count );
-        Matrix4x4 Tresult = new Matrix4x4();
-        Tresult.m00 = (float) coeffResults[0];
-        Tresult.m01 = (float)coeffResults[1];
-        Tresult.m02 = (float)coeffResults[2];
-        Tresult.m03 = (float)coeffResults[3];
-        Tresult.m10 = (float)coeffResults[4];
-        Tresult.m11 = (float)coeffResults[5];
-        Tresult.m12 = (float)coeffResults[6];
-        Tresult.m13 = (float)coeffResults[7];
-        Tresult.m20 = (float)coeffResults[8];
-        Tresult.m21 = (float)coeffResults[9];
-        Tresult.m22 = (float)coeffResults[10];
-        Tresult.m23 = (float)coeffResults[11];
-        Tresult.m30 = (float)coeffResults[12];
-        Tresult.m31 = (float)coeffResults[13];
-        Tresult.m32 = (float)coeffResults[14];
-        Tresult.m33 = 1.0f;
+        ////var diff = A - svd.U * svd.W * svd.VT;
 
-        return Tresult;
+        //Debug.Log( "SVD" );
+        //Vector coeffResults = svd.VT.Column( svd.VT.ColumnCount - 1 );
+        //Debug.Log( "Vector of size " + coeffResults.Count );
+        //Matrix4x4 Tresult = new Matrix4x4();
+        //Tresult.m00 = (float) coeffResults[0];
+        //Tresult.m01 = (float)coeffResults[1];
+        //Tresult.m02 = (float)coeffResults[2];
+        //Tresult.m03 = (float)coeffResults[3];
+        //Tresult.m10 = (float)coeffResults[4];
+        //Tresult.m11 = (float)coeffResults[5];
+        //Tresult.m12 = (float)coeffResults[6];
+        //Tresult.m13 = (float)coeffResults[7];
+        //Tresult.m20 = (float)coeffResults[8];
+        //Tresult.m21 = (float)coeffResults[9];
+        //Tresult.m22 = (float)coeffResults[10];
+        //Tresult.m23 = (float)coeffResults[11];
+        //Tresult.m30 = (float)coeffResults[12];
+        //Tresult.m31 = (float)coeffResults[13];
+        //Tresult.m32 = (float)coeffResults[14];
+        //Tresult.m33 = 1.0f;
+
+        //return Tresult;
+    }
+
+    static void printMatrix(double[,] M)
+    {
+        int height = M.GetLength( 0 );
+        int width = M.GetLength( 1 );
+        Debug.Log( height );
+        Debug.Log( width );
+        string ToPrint = "";
+        for (int i = 0; i < height; i ++)
+        {
+            for (int j = 0; j < width; j++)
+            {
+                ToPrint += M[i, j].ToString();
+                ToPrint += "\t";
+            }
+            ToPrint += "\n";
+        }
+        Debug.Log( ToPrint );
     }
 }
