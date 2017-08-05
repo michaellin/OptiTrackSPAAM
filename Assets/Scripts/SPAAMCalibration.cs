@@ -26,7 +26,7 @@ public class SPAAMCalibration : MonoBehaviour
     private bool initialAlignment = false;
 
     // *** Calibration Parameters *** //
-    private int numData = 12;
+    public const int SPAAMPoints = 12;
     private double[,] AlignmentPoints;
     private double[,] CalibrationPoints =
         { { 0, 0.5, 0 },
@@ -52,7 +52,7 @@ public class SPAAMCalibration : MonoBehaviour
     {
         CalibrationObjectTransform = HoloLensMarker.transform.GetChild( 0 ); // obtain the transform of the container for the calibration object
 
-        AlignmentPoints = new double[numData, 7];                     // Initialize 2D array of numData and 7 which is 3 for position and 4 for orientation
+        AlignmentPoints = new double[SPAAMPoints, 7];                     // Initialize 2D array of numData and 7 which is 3 for position and 4 for orientation
 
 
         CalibrationObjectTransform = NeedleMarker.transform;    // Use to set the pre-defined calibration positions
@@ -67,7 +67,7 @@ public class SPAAMCalibration : MonoBehaviour
     // Update is called once per frame
     void FixedUpdate()
     {
-        if (Input.GetKeyDown( KeyCode.Space ) && (currStep < numData))
+        if (Input.GetKeyDown( KeyCode.Space ) && (currStep < SPAAMPoints))
         {
             if (!initialAlignment)
             {
@@ -84,7 +84,7 @@ public class SPAAMCalibration : MonoBehaviour
             AlignmentPoints[currStep, 5] = relativeRot.y;
             AlignmentPoints[currStep, 6] = relativeRot.z;
 
-            if (currStep == numData - 1)
+            if (currStep == SPAAMPoints - 1)
             {
                 textStatus.text = "Done.";
                 GetCalibration( CalibrationPoints, AlignmentPoints );
@@ -143,14 +143,14 @@ public class SPAAMCalibration : MonoBehaviour
     /// <param name="pi"></param>
     /// <param name="qi"></param>
     /// <returns></returns>
-    private void GetCalibration( double[,] pi, double[,] qi )
+    private Matrix4x4 GetCalibration( double[,] pi, double[,] qi )
     {
         const int doubleSize = 8;
         const int matrixWidth = 15;
-        const int matrixHeight = 36;
+        const int matrixHeight = SPAAMPoints*3;
 
         var A = new double[matrixHeight, matrixWidth];
-        for (int p = 0; p < 12; p++)
+        for (int p = 0; p < SPAAMPoints; p++)
         {
             double[] row1 = { -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, 0, 0, 0, 0, 0, 0, 0, 0, pi[p, 0] * qi[p, 0], pi[p, 0] * qi[p, 1], pi[p, 0] * qi[p, 2] };
             Buffer.BlockCopy( row1, 0, A, doubleSize * matrixWidth * ( 3 * p), doubleSize * matrixWidth );
@@ -159,54 +159,38 @@ public class SPAAMCalibration : MonoBehaviour
             double[] row3 = { 0, 0, 0, 0, 0, 0, 0, 0, -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, pi[p, 2] * qi[p, 0], pi[p, 2] * qi[p, 1], pi[p, 2] * qi[p, 2] };
             Buffer.BlockCopy( row3, 0, A, doubleSize * matrixWidth * (3 * p + 2), doubleSize * matrixWidth );
         }
-        //printMatrix( A );
+        
+        // Prepare matrices to get SVD results
         double[] W = new double[matrixWidth];
         double[,] U = new double[matrixHeight, matrixWidth];
         double[,] VT = new double[matrixWidth, matrixWidth];
-        alglib.svd.rmatrixsvd( A, matrixHeight, matrixWidth, 0, 1, 2, ref W, ref U, ref VT );
 
-        printMatrix( VT );
-        //Debug.Log( U.ToString() );
-        //Debug.Log( VT.ToString() );
-        //Matrix A = Matrix.Build.Dense( 12 * 3, 15, 0 ); // Initialized a matrix of 36x15 of zeros
-        //for (int p = 0; p < 12; p++)
-        //{
-        //    Vector currRow1 = Vector.Build.DenseOfArray( new double[] { -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, 0, 0, 0, 0, 0, 0, 0, 0, pi[p, 0] * qi[p, 0], pi[p, 0] * qi[p, 1], pi[p, 0] * qi[p, 2] } );
-        //    Vector currRow2 = Vector.Build.DenseOfArray( new double[] { 0, 0, 0, 0, -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, 0, 0, 0, 0, pi[p, 1] * qi[p, 0], pi[p, 1] * qi[p, 1], pi[p, 1] * qi[p, 2] } );
-        //    Vector currRow3 = Vector.Build.DenseOfArray( new double[] { 0, 0, 0, 0, 0, 0, 0, 0, -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, pi[p, 2] * qi[p, 0], pi[p, 2] * qi[p, 1], pi[p, 2] * qi[p, 2] } );
-        //    A.SetRow( 3 * p, currRow1 );
-        //    A.SetRow( 3 * p + 1, currRow2 );
-        //    A.SetRow( 3 * p + 2, currRow3 );
-        //}
+        alglib.svd.rmatrixsvd( A, matrixHeight, matrixWidth, 0, 1, 2, ref W, ref U, ref VT ); // SVD with alglib
 
-        //var svd = A.Svd(true);
+        double[] coeffs = new double[matrixWidth];
 
-        ////Debug.Log( svd.VT ); 
+        Buffer.BlockCopy( VT, doubleSize * matrixWidth * (matrixWidth - 1), coeffs, 0, doubleSize * matrixWidth ); // Last row of VT contains the parameters of the transform matrix.
+        printMatrix( coeffs );
 
-        ////var diff = A - svd.U * svd.W * svd.VT;
+        Matrix4x4 Tresult = new Matrix4x4();
+        Tresult.m00 = (float)coeffs[0];
+        Tresult.m01 = (float)coeffs[1];
+        Tresult.m02 = (float)coeffs[2];
+        Tresult.m03 = (float)coeffs[3];
+        Tresult.m10 = (float)coeffs[4];
+        Tresult.m11 = (float)coeffs[5];
+        Tresult.m12 = (float)coeffs[6];
+        Tresult.m13 = (float)coeffs[7];
+        Tresult.m20 = (float)coeffs[8];
+        Tresult.m21 = (float)coeffs[9];
+        Tresult.m22 = (float)coeffs[10];
+        Tresult.m23 = (float)coeffs[11];
+        Tresult.m30 = (float)coeffs[12];
+        Tresult.m31 = (float)coeffs[13];
+        Tresult.m32 = (float)coeffs[14];
+        Tresult.m33 = 1.0f;
 
-        //Debug.Log( "SVD" );
-        //Vector coeffResults = svd.VT.Column( svd.VT.ColumnCount - 1 );
-        //Debug.Log( "Vector of size " + coeffResults.Count );
-        //Matrix4x4 Tresult = new Matrix4x4();
-        //Tresult.m00 = (float) coeffResults[0];
-        //Tresult.m01 = (float)coeffResults[1];
-        //Tresult.m02 = (float)coeffResults[2];
-        //Tresult.m03 = (float)coeffResults[3];
-        //Tresult.m10 = (float)coeffResults[4];
-        //Tresult.m11 = (float)coeffResults[5];
-        //Tresult.m12 = (float)coeffResults[6];
-        //Tresult.m13 = (float)coeffResults[7];
-        //Tresult.m20 = (float)coeffResults[8];
-        //Tresult.m21 = (float)coeffResults[9];
-        //Tresult.m22 = (float)coeffResults[10];
-        //Tresult.m23 = (float)coeffResults[11];
-        //Tresult.m30 = (float)coeffResults[12];
-        //Tresult.m31 = (float)coeffResults[13];
-        //Tresult.m32 = (float)coeffResults[14];
-        //Tresult.m33 = 1.0f;
-
-        //return Tresult;
+        return Tresult;
     }
 
     static void printMatrix(double[,] M)
@@ -225,6 +209,20 @@ public class SPAAMCalibration : MonoBehaviour
             }
             ToPrint += "\n";
         }
+        Debug.Log( ToPrint );
+    }
+
+    static void printMatrix( double[] arr )
+    {
+        int len = arr.GetLength(0);
+        string ToPrint = "";
+        ToPrint += "[";
+        for (int i = 0; i < len; i++)
+        {
+            ToPrint += arr[i].ToString();
+            ToPrint += "\t";
+        }
+        ToPrint += "]";
         Debug.Log( ToPrint );
     }
 }
