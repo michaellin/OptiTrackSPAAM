@@ -21,28 +21,34 @@ public class SPAAMCalibration : MonoBehaviour
     //public GameObject HoloLensMarker;      // This is the virtual object that will be moved around
     public GameObject NeedleMarker;                // This marker will be the one attached to the needle
     public GameObject HoloLensMarker;              // This marker will be the one attached to the HoloLens
+    public GameObject CalibrationObject;
+    public GameObject TestObject;
     private Transform CalibrationObjectTransform;  // This is the object that will move around w/r to the HoloLens for calibration
 
-    private bool initialAlignment = false;
+    private bool initialAlignmentDone = false;
+    public bool completedAlignment = false;
+    Matrix4x4 T_H;
 
     // *** Calibration Parameters *** //
     public const int SPAAMPoints = 12;
     private double[,] AlignmentPoints;
     private double[,] CalibrationPoints =
-        { { 0, 0.5, 0 },
-          { 0, 0, 0.5 },
-          { 0, 0, 0.2 },
-          { 0.6, 0, 0.1 },
-          { -0.5, 0, 0.5 },
-          { -0.3, 0.2, 0.5 },
-          { -0.8, 0, 0.5 },
-          { -0.1, 0, 0.5 },
-          { -0.3, 0, -0.5 },
-          { -0.8, 0, -0.5 },
-          { 0.7, 0, 0.5 },
-          { -0.05, 0, 0.5 }
+        { { 0, 0, 0.8 },
+          { 0, 0.1, 0.8 },
+          { 0.05, 0, 0.8 },
+          { 0.05, -0.1, 0.8 },
+          { -0.1, 0, 0.8 },
+          { -0.05, 0.05, 0.8 },
+          { -0.1, 0.1, 0.8 },
+          { -0.05, 0, 0.8 },
+          { -0.05, 0, 0.8 },
+          { 0.1, 0, 0.8 },
+          { 0.125, 0, 0.8 },
+          { -0.05, 0, 0.8 }
         };
+    private double[,] MeasuredCalibrationPoints;
     private int currStep = 0;
+    private bool debounceCalib = false;
     //private Transform CalibrationObjectTransform;
     //private Transform AlignmentObjectTransform;
     //private Transform HoloLensMarkerTransform;
@@ -50,31 +56,49 @@ public class SPAAMCalibration : MonoBehaviour
     // Use this for initialization
     void Start()
     {
-        CalibrationObjectTransform = HoloLensMarker.transform.GetChild( 0 ); // obtain the transform of the container for the calibration object
+        T_H = Matrix4x4.identity;    // Initialize the alignment matrix as identity
 
-        AlignmentPoints = new double[SPAAMPoints, 7];                     // Initialize 2D array of numData and 7 which is 3 for position and 4 for orientation
+        CalibrationObjectTransform = CalibrationObject.transform; // obtain the transform of the container for the calibration object
 
+        TestObject.SetActive( false );
 
-        CalibrationObjectTransform = NeedleMarker.transform;    // Use to set the pre-defined calibration positions
-        CalibrationObjectTransform.position = Camera.main.transform.position + new Vector3( (float)CalibrationPoints[0,0], (float)CalibrationPoints[0, 1], (float)CalibrationPoints[0, 2] );  // Set the first position
+        AlignmentPoints = new double[SPAAMPoints, 7];             // Initialize 2D array of numData and 7 which is 3 for position and 4 for orientation
+        MeasuredCalibrationPoints = new double[SPAAMPoints, 3];   // Array to store the calibration points in world coordinates
+
+        CalibrationObjectTransform.localPosition = new Vector3( (float)CalibrationPoints[0,0], (float)CalibrationPoints[0, 1], (float)CalibrationPoints[0, 2] );  // Set the first position
 
         textStatus.text = "Step " + (currStep + 1);
 
         // Testing space
-        GetCalibration( CalibrationPoints, CalibrationPoints );
+        //GetCalibration( CalibrationPoints, CalibrationPoints );
     }
 
     // Update is called once per frame
     void FixedUpdate()
     {
-        if (Input.GetKeyDown( KeyCode.Space ) && (currStep < SPAAMPoints))
+        if (completedAlignment)
         {
-            if (!initialAlignment)
+            // ** 0.00340	-0.04503	-0.03366	0.00316
+            //    0.00268    0.02992    0.01796     0.00146
+            //    0.05821    0.51140    0.35615    -0.00126
+            //    0.07317    0.63595    0.44050     1.00000
+            Vector3 relativePos = Camera.main.transform.InverseTransformVector(NeedleMarker.transform.position - HoloLensMarker.transform.position);
+            Quaternion relativeRot = Quaternion.Inverse( HoloLensMarker.transform.rotation ) * NeedleMarker.transform.rotation;
+            TestObject.transform.localPosition = T_H.MultiplyPoint(relativePos);
+            TestObject.transform.rotation = Camera.main.transform.rotation * relativeRot;
+        }
+
+        CalibrationObjectTransform.localPosition = new Vector3( (float)CalibrationPoints[currStep, 0], (float)CalibrationPoints[currStep, 1], (float)CalibrationPoints[currStep, 2] );  // Set next position
+        CalibrationObjectTransform.transform.up = Vector3.up;
+
+        if (Input.GetKeyDown( KeyCode.Space ) && (currStep < SPAAMPoints) && (debounceCalib == false))
+        {
+            if (!initialAlignmentDone)
             {
-                initialAlignment = true;
+                initialAlignmentDone = true;
             }
-            Vector3 relativePos = NeedleMarker.transform.position - HoloLensMarker.transform.position;
-            Quaternion relativeRot = Quaternion.Inverse( HoloLensMarker.transform.rotation ) * NeedleMarker.transform.rotation; // rotation from HMD to object
+            Vector3 relativePos = Camera.main.transform.InverseTransformVector(NeedleMarker.transform.position - HoloLensMarker.transform.position); // in the Camera coordinate system
+            Quaternion relativeRot = Quaternion.Inverse( HoloLensMarker.transform.rotation ) * NeedleMarker.transform.rotation;                      // rotation from HMD to object
 
             AlignmentPoints[currStep, 0] = relativePos.x;
             AlignmentPoints[currStep, 1] = relativePos.y;
@@ -84,19 +108,32 @@ public class SPAAMCalibration : MonoBehaviour
             AlignmentPoints[currStep, 5] = relativeRot.y;
             AlignmentPoints[currStep, 6] = relativeRot.z;
 
+            MeasuredCalibrationPoints[currStep, 0] = CalibrationObjectTransform.position.x;
+            MeasuredCalibrationPoints[currStep, 1] = CalibrationObjectTransform.position.y;
+            MeasuredCalibrationPoints[currStep, 2] = CalibrationObjectTransform.position.z;
+
             if (currStep == SPAAMPoints - 1)
             {
                 textStatus.text = "Done.";
-                GetCalibration( CalibrationPoints, AlignmentPoints );
-                //Matrix4x4 T_H = GetCalibration( CalibrationPoints, AlignmentPoints );
-                //Debug.Log( T_H );
+                Debug.Log( "Done" );
+                completedAlignment = true;
+                Matrix4x4 T_H = GetCalibration( CalibrationPoints, AlignmentPoints );
+                Debug.Log( T_H );
+
+                CalibrationObject.SetActive( false );
+                TestObject.SetActive( true );
+
+                // Figure out what to do next
+                completedAlignment = true;
             }
             else
             {
                 currStep++;
-                CalibrationObjectTransform.position = Camera.main.transform.position + new Vector3( (float)CalibrationPoints[currStep, 0], (float)CalibrationPoints[currStep, 1], (float)CalibrationPoints[currStep, 2] );  // Set next position
                 textStatus.text = "Step " + (currStep + 1);
+                Debug.Log( "Step " + (currStep + 1) );
             }
+            debounceCalib = true;
+            Invoke( "recoverDebounce", 0.5f );
         }
         else if (Input.GetKeyDown( KeyCode.P ))
         {
@@ -111,21 +148,36 @@ public class SPAAMCalibration : MonoBehaviour
                             " rotz " + AlignmentPoints[i, 6].ToString( "F4" ) );
             }
         }
-
-        float xAxisValue = speed * Input.GetAxis( "Horizontal" );
-        float zAxisValue = speed * Input.GetAxis( "Vertical" );
-        if (Camera.current != null)
+        else if (Input.GetKeyDown( KeyCode.R ))
         {
-            Camera.current.transform.Translate( new Vector3( xAxisValue, 0.0f, zAxisValue ) );
+            completedAlignment = false;
+            CalibrationObject.SetActive( true );
+            TestObject.SetActive( false );
+            currStep = 0;
+            CalibrationObjectTransform.position = new Vector3( (float)CalibrationPoints[0, 0], (float)CalibrationPoints[0, 1], (float)CalibrationPoints[0, 2] );  // Set the first position
         }
 
-        transform.position = Camera.main.transform.position + Camera.main.transform.forward * distFwd;
-        if (!initialAlignment)
-        {
-            transform.rotation = Quaternion.AngleAxis( Camera.main.transform.rotation.eulerAngles.y, Vector3.up );
-        }
+        //float xAxisValue = speed * Input.GetAxis( "Horizontal" );
+        //float zAxisValue = speed * Input.GetAxis( "Vertical" );
+        //if (Camera.current != null)
+        //{
+        //    Camera.current.transform.Translate( new Vector3( xAxisValue, 0.0f, zAxisValue ) );
+        //}
+
+        //transform.position = Camera.main.transform.position + Camera.main.transform.forward * distFwd;
+        //if (!initialAlignment)
+        //{
+        //    transform.rotation = Quaternion.AngleAxis( Camera.main.transform.rotation.eulerAngles.y, Vector3.up );
+        //}
     }
 
+    /// <summary>
+    /// Recover from debouncing state for space bar
+    /// </summary>
+    private void recoverDebounce()
+    {
+        debounceCalib = false;
+    }
 
     /// <summary>
     /// Get Calibration calculates the projection matrix from points in displayed to points in measured. The problem is defined
@@ -226,3 +278,26 @@ public class SPAAMCalibration : MonoBehaviour
         Debug.Log( ToPrint );
     }
 }
+
+
+//0.01808	-0.07162	-0.04280	0.00015
+//0.01320	-0.05461	-0.03111	-0.00093
+//0.06696	-0.26426	-0.15963	0.00166
+//0.19797	-0.79218	-0.47122	1.00000
+
+
+//-0.01073	-0.04196	-0.03186	0.00028
+//-0.01492	-0.05362	-0.03482	-0.00336
+//-0.05420	-0.21257	-0.16917	0.00611
+//-0.19471	-0.74994	-0.56186	1.00000
+
+//0.00824	    0.20384	    0.14430	   -0.00116
+//0.00768	    0.18966	    0.13457	   -0.00125
+//-0.01778	-0.42970	-0.30268	0.00149
+//-0.02845	-0.63785	-0.44629	1.00000
+
+
+//0.43976	0.00045	-0.00536	0.00080
+//0.00632	0.44879	-0.00260	0.04021
+//-0.00197	0.08185	0.47870	-0.00038
+//-0.00248	0.10202	0.59769	1.00000
