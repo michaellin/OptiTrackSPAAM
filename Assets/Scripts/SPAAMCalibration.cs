@@ -33,18 +33,18 @@ public class SPAAMCalibration : MonoBehaviour
     public const int SPAAMPoints = 12;
     private double[,] AlignmentPoints;
     private double[,] CalibrationPoints =
-        { { 0, 0, 0.8 },
-          { 0, 0.1, 0.8 },
-          { 0.05, 0, 0.8 },
-          { 0.05, -0.1, 0.8 },
-          { -0.1, 0, 0.8 },
-          { -0.05, 0.05, 0.8 },
-          { -0.1, 0.1, 0.8 },
-          { -0.05, 0, 0.8 },
-          { -0.05, 0, 0.8 },
-          { 0.1, 0, 0.8 },
-          { 0.125, 0, 0.8 },
-          { -0.05, 0, 0.8 }
+        { { 0, 0, 0.5 },
+          { 0, 0.04, 0.5 },
+          { 0.025, 0, 0.5 },
+          { 0.025, -0.04, 0.5 },
+          { -0.04, 0, 0.5 },
+          { -0.025, 0.025, 0.5 },
+          { -0.04, 0.04, 0.5 },
+          { -0.025, 0, 0.5 },
+          { -0.025, -0.04, 0.5 },
+          { 0.04, 0, 0.5 },
+          { 0.045, 0.02, 0.5 },
+          { -0.025, 0, 0.5 }
         };
     private double[,] MeasuredCalibrationPoints;
     private int currStep = 0;
@@ -59,8 +59,13 @@ public class SPAAMCalibration : MonoBehaviour
         T_H = Matrix4x4.identity;    // Initialize the alignment matrix as identity
 
         CalibrationObjectTransform = CalibrationObject.transform; // obtain the transform of the container for the calibration object
-
-        TestObject.SetActive( false );
+        if (completedAlignment == false)
+        {
+            TestObject.SetActive( false );
+        } else
+        {
+            CalibrationObject.SetActive( false );
+        }
 
         AlignmentPoints = new double[SPAAMPoints, 7];             // Initialize 2D array of numData and 7 which is 3 for position and 4 for orientation
         MeasuredCalibrationPoints = new double[SPAAMPoints, 3];   // Array to store the calibration points in world coordinates
@@ -89,8 +94,11 @@ public class SPAAMCalibration : MonoBehaviour
         }
 
         CalibrationObjectTransform.localPosition = new Vector3( (float)CalibrationPoints[currStep, 0], (float)CalibrationPoints[currStep, 1], (float)CalibrationPoints[currStep, 2] );  // Set next position
-        CalibrationObjectTransform.transform.up = Vector3.up;
-
+        //CalibrationObjectTransform.transform.up = Vector3.up;
+        if (Input.GetKeyDown( KeyCode.L ))
+        {
+            Debug.Log(Camera.main.transform.InverseTransformVector( NeedleMarker.transform.position - HoloLensMarker.transform.position ));
+        }
         if (Input.GetKeyDown( KeyCode.Space ) && (currStep < SPAAMPoints) && (debounceCalib == false))
         {
             if (!initialAlignmentDone)
@@ -119,6 +127,8 @@ public class SPAAMCalibration : MonoBehaviour
                 completedAlignment = true;
                 Matrix4x4 T_H = GetCalibration( CalibrationPoints, AlignmentPoints );
                 Debug.Log( T_H );
+
+                Debug.Log( T_H.inverse );
 
                 CalibrationObject.SetActive( false );
                 TestObject.SetActive( true );
@@ -181,7 +191,7 @@ public class SPAAMCalibration : MonoBehaviour
 
     /// <summary>
     /// Get Calibration calculates the projection matrix from points in displayed to points in measured. The problem is defined
-    /// as qi = T*pi. Where pi are defined points and qi are measured. If we rework the matrix we can get A*t = 0. The reworked 
+    /// as qi = T*pi. Where pi are measured and qi are defined points. If we rework the matrix we can get A*t = 0. The reworked 
     /// matrix is of the following form:
     /// A = [-q1 -q2 -q3 -1   0   0   0  0   0   0   0  0 p1q1 p1q2 p1q3;
     ///        0   0   0  0 -q1 -q2 -q3 -1   0   0   0  0 p2q1 p2q2 p2q3;
@@ -198,17 +208,17 @@ public class SPAAMCalibration : MonoBehaviour
     private Matrix4x4 GetCalibration( double[,] pi, double[,] qi )
     {
         const int doubleSize = 8;
-        const int matrixWidth = 15;
+        const int matrixWidth = 16;
         const int matrixHeight = SPAAMPoints*3;
 
         var A = new double[matrixHeight, matrixWidth];
         for (int p = 0; p < SPAAMPoints; p++)
         {
-            double[] row1 = { -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, 0, 0, 0, 0, 0, 0, 0, 0, pi[p, 0] * qi[p, 0], pi[p, 0] * qi[p, 1], pi[p, 0] * qi[p, 2] };
+            double[] row1 = { -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, 0, 0, 0, 0, 0, 0, 0, 0, pi[p, 0] * qi[p, 0], pi[p, 0] * qi[p, 1], pi[p, 0] * qi[p, 2], pi[p, 0] };
             Buffer.BlockCopy( row1, 0, A, doubleSize * matrixWidth * ( 3 * p), doubleSize * matrixWidth );
-            double[] row2 = { 0, 0, 0, 0, -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, 0, 0, 0, 0, pi[p, 1] * qi[p, 0], pi[p, 1] * qi[p, 1], pi[p, 1] * qi[p, 2] };
+            double[] row2 = { 0, 0, 0, 0, -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, 0, 0, 0, 0, pi[p, 1] * qi[p, 0], pi[p, 1] * qi[p, 1], pi[p, 1] * qi[p, 2], pi[p, 1] };
             Buffer.BlockCopy( row2, 0, A, doubleSize * matrixWidth * (3 * p + 1), doubleSize * matrixWidth );
-            double[] row3 = { 0, 0, 0, 0, 0, 0, 0, 0, -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, pi[p, 2] * qi[p, 0], pi[p, 2] * qi[p, 1], pi[p, 2] * qi[p, 2] };
+            double[] row3 = { 0, 0, 0, 0, 0, 0, 0, 0, -qi[p, 0], -qi[p, 1], -qi[p, 2], -1, pi[p, 2] * qi[p, 0], pi[p, 2] * qi[p, 1], pi[p, 2] * qi[p, 2], pi[p, 2] };
             Buffer.BlockCopy( row3, 0, A, doubleSize * matrixWidth * (3 * p + 2), doubleSize * matrixWidth );
         }
         
@@ -240,7 +250,7 @@ public class SPAAMCalibration : MonoBehaviour
         Tresult.m30 = (float)coeffs[12];
         Tresult.m31 = (float)coeffs[13];
         Tresult.m32 = (float)coeffs[14];
-        Tresult.m33 = 1.0f;
+        Tresult.m33 = (float)coeffs[15];
 
         return Tresult;
     }
