@@ -32,23 +32,41 @@ public class SPAAMCalibration : MonoBehaviour
     // *** Calibration Parameters *** //
     public const int SPAAMPoints = 12;
     private double[,] AlignmentPoints;
+    // Old calibration points that were all in a plane
+    //private double[,] CalibrationPoints =
+    //    { { 0, 0, 0.5 },
+    //      { 0, 0.04, 0.5 },
+    //      { 0.025, 0, 0.5 },
+    //      { 0.025, -0.04, 0.5 },
+    //      { -0.04, 0, 0.5 },
+    //      { -0.025, 0.025, 0.5 },
+    //      { -0.04, 0.04, 0.5 },
+    //      { -0.025, 0, 0.5 },
+    //      { -0.025, -0.04, 0.5 },
+    //      { 0.04, 0, 0.5 },
+    //      { 0.045, 0.02, 0.5 },
+    //      { -0.025, 0, 0.5 }
+    //    };
     private double[,] CalibrationPoints =
         { { 0, 0, 0.5 },
           { 0, 0.04, 0.5 },
-          { 0.025, 0, 0.5 },
+          { 0.025, 0, 0.55 },
           { 0.025, -0.04, 0.5 },
-          { -0.04, 0, 0.5 },
+          { -0.04, 0, 0.55  },
           { -0.025, 0.025, 0.5 },
-          { -0.04, 0.04, 0.5 },
+          { -0.04, 0.04, 0.55 },
           { -0.025, 0, 0.5 },
-          { -0.025, -0.04, 0.5 },
+          { -0.025, -0.04, 0.55 },
           { 0.04, 0, 0.5 },
-          { 0.045, 0.02, 0.5 },
+          { 0.045, 0.02, 0.55 },
           { -0.025, 0, 0.5 }
         };
     private double[,] MeasuredCalibrationPoints;
     private int currStep = 0;
     private bool debounceCalib = false;
+    private bool tapDetected = false;
+    GestureRecognizer recognizer;
+
     //private Transform CalibrationObjectTransform;
     //private Transform AlignmentObjectTransform;
     //private Transform HoloLensMarkerTransform;
@@ -75,7 +93,13 @@ public class SPAAMCalibration : MonoBehaviour
         textStatus.text = "Step " + (currStep + 1);
 
         // Testing space
-        //GetCalibration( CalibrationPoints, CalibrationPoints );
+        //GetCalibration2( toHomogeneous( 12, 3, CalibrationPoints ), toHomogeneous( 12, 3, CalibrationPoints ) );
+        recognizer = new GestureRecognizer();
+        recognizer.TappedEvent += ( source, tapCount, ray ) =>
+        {
+            tapDetected = true;
+        };
+        recognizer.StartCapturingGestures();
     }
 
     // Update is called once per frame
@@ -95,15 +119,20 @@ public class SPAAMCalibration : MonoBehaviour
 
         CalibrationObjectTransform.localPosition = new Vector3( (float)CalibrationPoints[currStep, 0], (float)CalibrationPoints[currStep, 1], (float)CalibrationPoints[currStep, 2] );  // Set next position
         //CalibrationObjectTransform.transform.up = Vector3.up;
+
         if (Input.GetKeyDown( KeyCode.L ))
         {
             Debug.Log(Camera.main.transform.InverseTransformVector( NeedleMarker.transform.position - HoloLensMarker.transform.position ));
         }
-        if (Input.GetKeyDown( KeyCode.Space ) && (currStep < SPAAMPoints) && (debounceCalib == false))
+        if ((Input.GetKeyDown( KeyCode.Space ) || tapDetected) && (currStep < SPAAMPoints) && (debounceCalib == false))
         {
             if (!initialAlignmentDone)
             {
                 initialAlignmentDone = true;
+            }
+            if (tapDetected)
+            {
+                tapDetected = false;
             }
             Vector3 relativePos = Camera.main.transform.InverseTransformVector(NeedleMarker.transform.position - HoloLensMarker.transform.position); // in the Camera coordinate system
             Quaternion relativeRot = Quaternion.Inverse( HoloLensMarker.transform.rotation ) * NeedleMarker.transform.rotation;                      // rotation from HMD to object
@@ -120,15 +149,17 @@ public class SPAAMCalibration : MonoBehaviour
             MeasuredCalibrationPoints[currStep, 1] = CalibrationObjectTransform.position.y;
             MeasuredCalibrationPoints[currStep, 2] = CalibrationObjectTransform.position.z;
 
+            Debug.Log( "posx " + AlignmentPoints[currStep, 0].ToString( "F4" ) +
+                       " posy " + AlignmentPoints[currStep, 1].ToString( "F4" ) +
+                       " posz " + AlignmentPoints[currStep, 2].ToString( "F4" ) );
+
             if (currStep == SPAAMPoints - 1)
             {
                 textStatus.text = "Done.";
                 Debug.Log( "Done" );
                 completedAlignment = true;
-                Matrix4x4 T_H = GetCalibration( CalibrationPoints, AlignmentPoints );
+                Matrix4x4 T_H = GetCalibration2( toHomogeneous(12, 3, CalibrationPoints), toHomogeneous(12, 3, AlignmentPoints) );
                 Debug.Log( T_H );
-
-                Debug.Log( T_H.inverse );
 
                 CalibrationObject.SetActive( false );
                 TestObject.SetActive( true );
@@ -143,7 +174,7 @@ public class SPAAMCalibration : MonoBehaviour
                 Debug.Log( "Step " + (currStep + 1) );
             }
             debounceCalib = true;
-            Invoke( "recoverDebounce", 0.5f );
+            Invoke( "recoverDebounce", 0.2f );
         }
         else if (Input.GetKeyDown( KeyCode.P ))
         {
@@ -255,12 +286,94 @@ public class SPAAMCalibration : MonoBehaviour
         return Tresult;
     }
 
+    /// <summary>
+    ///  Calibrates two sets of homogeneous coordinates using least squares
+    /// </summary>
+    /// <param name="P">defined</param>
+    /// <param name="Q">measured</param>
+    /// <returns></returns>
+    private Matrix4x4 GetCalibration2( double[,] P, double[,] Q )
+    {
+        double[,] Q_star = new double[4, 12];
+        transposeMat( 12, 4, Q, ref Q_star );
+
+        double[,] Q_temp = new double[4, 4];
+        alglib.rmatrixgemm( 4, 4, 12, 1, Q_star, 0, 0, 0, Q, 0, 0, 0, 0, ref Q_temp, 0, 0 );
+
+        int success;
+        alglib.matinvreport rep;
+        alglib.rmatrixinverse( ref Q_temp, out success, out rep );
+
+        double[,] Q_pinv = new double[4, 12];
+        alglib.rmatrixgemm( 4, 12, 4, 1, Q_temp, 0, 0, 0, Q_star, 0, 0, 0, 0, ref Q_pinv, 0, 0 );
+
+        double[,] result = new double[4, 4]; // result should be the transpose of this
+        alglib.rmatrixgemm( 4, 4, 12, 1, Q_pinv, 0, 0, 0, P, 0, 0, 0, 0, ref result, 0, 0 );
+
+        Matrix4x4 outMat = new Matrix4x4();
+        outMat.m00 = (float) result[0, 0];
+        outMat.m01 = (float)result[1, 0];
+        outMat.m02 = (float)result[2, 0];
+        outMat.m03 = (float)result[3, 0];
+        outMat.m10 = (float)result[0, 1];
+        outMat.m11 = (float)result[1, 1];
+        outMat.m12 = (float)result[2, 1];
+        outMat.m13 = (float)result[3, 1];
+        outMat.m20 = (float)result[0, 2];
+        outMat.m21 = (float)result[1, 2];
+        outMat.m22 = (float)result[2, 2];
+        outMat.m23 = (float)result[3, 2];
+        outMat.m30 = (float)result[0, 3];
+        outMat.m31 = (float)result[1, 3];
+        outMat.m32 = (float)result[2, 3];
+        outMat.m33 = (float)result[3, 3];
+        return outMat;
+    }
+
+    /// <summary>
+    /// Computes the transpose of a matrix
+    /// </summary>
+    /// <param name="m">height</param>
+    /// <param name="n">width</param>
+    /// <param name="inMat"></param>
+    /// <param name="outMat"></param>
+    private void transposeMat( int m, int n, double[,] inMat, ref double[,] outMat )
+    {
+        for ( int k = 0; k < m; k++ )
+        {
+            for ( int j = 0; j < n; j ++ )
+            {
+                outMat[j, k] = inMat[k, j];
+            }
+        }
+    }
+
+    /// <summary>
+    /// Makes an array of points into Homogeneous coordinate
+    /// </summary>
+    /// <param name="m"></param>
+    /// <param name="n"></param>
+    /// <param name="inMat"></param>
+    /// <param name="outMat"></param>
+    private double[,] toHomogeneous( int m, int n, double[,] inMat )
+    {
+        double[,] result = new double[m, n + 1];
+        for (int k = 0; k < m; k++)
+        {
+            for (int j = 0; j < n; j++)
+            {
+                result[k, j] = inMat[k, j];
+            }
+            result[k, n] = 1.0f;
+        }
+        return result;
+    }
+
     static void printMatrix(double[,] M)
     {
         int height = M.GetLength( 0 );
         int width = M.GetLength( 1 );
-        Debug.Log( height );
-        Debug.Log( width );
+
         string ToPrint = "";
         for (int i = 0; i < height; i ++)
         {
